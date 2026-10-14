@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-agent-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first enterprise incident investigation agent lab"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
   "langgraph>=0.6,<1",
   "langchain-core>=0.3,<1",
   "langchain-ollama>=0.3,<1",
+  "langchain-mcp-adapters>=0.1,<1",
   "mcp>=1,<2",
 ]
 
