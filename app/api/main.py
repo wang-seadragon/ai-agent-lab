@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 
 from app.agents.single_agent import build_agent, investigate
 from app.mcp_client import create_mcp_client
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
