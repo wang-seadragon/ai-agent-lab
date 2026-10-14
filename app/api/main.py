@@ -1,17 +1,18 @@
 """FastAPI application; discover MCP tools and compile graph at startup."""
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
 from app.agents.single_agent import build_agent, investigate
 from app.mcp_client import create_mcp_client
-import logging
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
     del app.state.agent
 
 
-app = FastAPI(title="AI Agent Lab", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="AI Agent Lab", version="0.3.0", lifespan=lifespan)
 
 
 class InvestigationRequest(BaseModel):
@@ -32,12 +33,27 @@ class InvestigationRequest(BaseModel):
     question: str = Field(min_length=1)
 
 
+class ToolMetric(BaseModel):
+    status: str
+    attempts: int
+    duration_ms: float
+
+
+class InvestigationResponse(BaseModel):
+    incident_id: str
+    status: str
+    missing_evidence: list[str]
+    llm_rounds: int
+    tool_metrics: dict[str, ToolMetric]
+    duration_ms: float
+    answer: str
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.post("/investigate")
+@app.post("/investigate", response_model=InvestigationResponse)
 async def investigate_incident(payload: InvestigationRequest, request: Request):
-    answer = await investigate(request.app.state.agent, payload.incident_id, payload.question)
-    return {"incident_id": payload.incident_id, "answer": answer}
+    return await investigate(request.app.state.agent, payload.incident_id, payload.question)
