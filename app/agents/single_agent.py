@@ -403,7 +403,8 @@ def build_llm_selected_agent(tools, model=None):
                 f"Validated tool evidence (JSON): {json.dumps(evidence, default=str)}"
             )),
         ])
-        return {"messages": [response], "llm_rounds": 2, "status": "complete",\n                "selected_tool_mode": True, "failed_selected_tools": []}
+        return {"messages": [response], "llm_rounds": 2, "status": "complete",
+                "selected_tool_mode": True, "failed_selected_tools": []}
 
     graph = StateGraph(InvestigationState)
     graph.add_node("plan", plan)
