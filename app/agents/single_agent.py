@@ -42,6 +42,7 @@ class InvestigationResult(TypedDict):
     missing_evidence: list[str]
     llm_rounds: int
     tool_metrics: dict
+    tool_errors: list[dict]
     duration_ms: float
     answer: str
 
@@ -113,10 +114,12 @@ async def execute_tools(state, tools_by_name):
         started = time.perf_counter()
         error = None
         attempts = 0
+        error_type = None
         tool = tools_by_name.get(name)
         # Reject wrong-incident calls; never silently query another incident.
         if tool is None or args.get("incident_id") != incident_id:
-            error = "Unknown tool or incident ID mismatch"
+            error = "Unknown tool" if tool is None else "Incident ID mismatch"
+            error_type = "UnknownTool" if tool is None else "InvalidArguments"
         else:
             for attempt in range(1, TOOL_ATTEMPTS + 1):
                 attempts = attempt
@@ -130,6 +133,7 @@ async def execute_tools(state, tools_by_name):
                     # A returned business error is not a transport failure: don't retry it.
                     if isinstance(payload, dict) and payload.get("error"):
                         error = str(payload["error"])
+                        error_type = "MCPApplicationError"
                         break
                     duration = round((time.perf_counter() - started) * 1000, 2)
                     logger.info("MCP tool=%s status=success attempts=%d duration_ms=%.2f",
@@ -140,7 +144,8 @@ async def execute_tools(state, tools_by_name):
                         {"status": "success", "attempts": attempts, "duration_ms": duration},
                     )
                 except Exception as exc:
-                    error = f"{type(exc).__name__}: {exc}"
+                    error_type = "TimeoutError" if isinstance(exc, asyncio.TimeoutError) else type(exc).__name__
+                    error = str(exc) or error_type
                     logger.warning("MCP tool=%s attempt=%d/%d failed: %s",
                                    name, attempt, TOOL_ATTEMPTS, error)
                     if attempt < TOOL_ATTEMPTS:
@@ -149,7 +154,8 @@ async def execute_tools(state, tools_by_name):
         return (
             ToolMessage(name=name, tool_call_id=call_id,
                         content=f"Error: {error}", status="error"),
-            {"status": "error", "attempts": attempts, "duration_ms": duration},
+            {"status": "error", "attempts": attempts, "duration_ms": duration,
+             "error_type": error_type or "ToolError", "error_message": error or "Unknown failure"},
         )
 
     results = await asyncio.gather(*(run_one(call) for call in calls))
@@ -164,7 +170,8 @@ def build_agent(tools, model=None):
     tools_by_name = {tool.name: tool for tool in tools}
     if not tools_by_name:
         raise ValueError("At least one MCP tool is required")
-    llm = (model if model is not None else get_chat_model()).bind_tools(tools)
+    base_llm = model if model is not None else get_chat_model()
+    llm = base_llm.bind_tools(tools)
 
     async def call_llm(state):
         response = await llm.ainvoke([
@@ -180,9 +187,15 @@ def build_agent(tools, model=None):
         return await execute_tools(state, tools_by_name)
 
     def route_after_tools(state):
-        return "incomplete" if selected_tool_failures(state) else (
-            "incomplete" if state["llm_rounds"] >= MAX_LLM_ROUNDS else "agent"
-        )
+        if selected_tool_failures(state):
+            return "partial" if any(
+                isinstance(m, ToolMessage) and m.status != "error"
+                and isinstance(_payload(m.content), dict)
+                and not _payload(m.content).get("error")
+                and _payload(m.content).get("incident_id") == state["incident_id"]
+                for m in state["messages"]
+            ) else "incomplete"
+        return "incomplete" if state["llm_rounds"] >= MAX_LLM_ROUNDS else "agent"
 
     def route_after_answer(state):
         return "incomplete" if selected_tool_failures(state) else "complete"
