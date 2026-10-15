@@ -1,11 +1,12 @@
 """FastAPI application; discover MCP tools and compile graph at startup."""
 from contextlib import asynccontextmanager
+import os
 import logging
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
-from app.agents.single_agent import build_agent, investigate
+from app.agents.single_agent import build_agent, build_evidence_first_agent, investigate
 from app.mcp_client import create_mcp_client
 
 logging.basicConfig(
@@ -20,12 +21,16 @@ async def lifespan(app: FastAPI):
     tools = await client.get_tools()
     if len(tools) != 3:
         raise RuntimeError(f"Expected 3 MCP tools, discovered {len(tools)}")
-    app.state.agent = build_agent(tools)
+    mode = os.getenv("INVESTIGATION_MODE", "evidence_first").lower()
+    if mode not in {"evidence_first", "dynamic"}:
+        raise ValueError(f"Unsupported INVESTIGATION_MODE: {mode}")
+    app.state.agent = (build_evidence_first_agent(tools) if mode == "evidence_first"
+                       else build_agent(tools))
     yield
     del app.state.agent
 
 
-app = FastAPI(title="AI Agent Lab", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="AI Agent Lab", version="0.4.0", lifespan=lifespan)
 
 
 class InvestigationRequest(BaseModel):
