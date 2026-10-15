@@ -72,7 +72,7 @@ def test_iterative_tool_selection_based_on_evidence():
     }
 
 
-def test_tool_failure_stops_before_another_llm_round(monkeypatch):
+def test_tool_failure_without_valid_evidence_skips_synthesis(monkeypatch):
     monkeypatch.setattr("app.agents.single_agent.TOOL_ATTEMPTS", 2)
     monkeypatch.setattr("app.agents.single_agent.TOOL_BACKOFF_SECONDS", 0)
     model = ScriptedModel([["get_incident_runbook_mcp"]])
@@ -82,6 +82,8 @@ def test_tool_failure_stops_before_another_llm_round(monkeypatch):
     assert result["llm_rounds"] == 1
     assert model.calls == 1
     assert result["tool_metrics"]["get_incident_runbook_mcp"]["attempts"] == 2
+    assert result["tool_errors"][0]["error_type"] == "ConnectionError"
+    assert "MCP unavailable" in result["tool_errors"][0]["message"]
 
 
 def test_no_tools_selected_is_incomplete():
@@ -103,3 +105,25 @@ def test_round_limit_stops_tool_loop(monkeypatch):
     assert result["missing_evidence"] == ["llm_round_limit"]
     assert result["llm_rounds"] == 2
     assert model.calls == 2
+
+
+def test_partial_evidence_synthesis_on_selected_tool_failure(monkeypatch):
+    monkeypatch.setattr("app.agents.single_agent.TOOL_ATTEMPTS", 2)
+    monkeypatch.setattr("app.agents.single_agent.TOOL_BACKOFF_SECONDS", 0)
+    model = ScriptedModel([[
+        "get_incident_metrics_mcp",
+        "get_incident_logs_mcp",
+        "get_incident_runbook_mcp",
+    ]])
+    result = run(model, fake_tools(fail_name="get_incident_runbook_mcp"))
+    assert result["status"] == "incomplete"
+    assert result["missing_evidence"] == ["get_incident_runbook_mcp"]
+    assert result["llm_rounds"] == 2
+    assert model.calls == 2
+    assert result["answer"] == "Evidence-based diagnosis."
+    assert result["tool_errors"][0]["tool"] == "get_incident_runbook_mcp"
+    assert result["tool_errors"][0]["attempts"] == 2
+    assert set(result["tool_metrics"]) == {
+        "get_incident_metrics_mcp", "get_incident_logs_mcp",
+        "get_incident_runbook_mcp",
+    }
