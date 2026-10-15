@@ -37,12 +37,20 @@ class ToolMetric(BaseModel):
     duration_ms: float
 
 
+class ToolError(BaseModel):
+    tool: str
+    error_type: str
+    message: str
+    attempts: int
+
+
 class InvestigationResponse(BaseModel):
     incident_id: str
     status: str
     missing_evidence: list[str]
     llm_rounds: int
     tool_metrics: dict[str, ToolMetric]
+    tool_errors: list[ToolError]
     duration_ms: float
     answer: str
 
