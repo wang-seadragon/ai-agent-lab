@@ -447,7 +447,9 @@ async def investigate(agent, incident_id: str, question: str) -> InvestigationRe
     return {
         "incident_id": incident_id,
         "status": result["status"],
-        "missing_evidence": (result.get("failed_selected_tools", [])\n                             if result.get("selected_tool_mode")\n                             else sorted(missing_evidence(result))),
+        "missing_evidence": (result.get("failed_selected_tools", [])
+                             if result.get("selected_tool_mode")
+                             else sorted(missing_evidence(result))),
         "llm_rounds": result["llm_rounds"],
         "tool_metrics": result["tool_metrics"],
         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
