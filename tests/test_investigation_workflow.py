@@ -5,7 +5,7 @@ import json
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 
-from app.agents.single_agent import REQUIRED_TOOLS, build_agent, investigate
+from app.agents.single_agent import REQUIRED_TOOLS, build_agent, build_evidence_first_agent, investigate
 
 
 class ScriptedModel:
@@ -67,5 +67,43 @@ def test_graph_failure_returns_structured_incomplete(monkeypatch):
     assert result["missing_evidence"] == ["get_incident_runbook_mcp"]
     assert result["llm_rounds"] == 4
     assert result["tool_metrics"]["get_incident_runbook_mcp"]["status"] == "error"
+    assert result["tool_metrics"]["get_incident_runbook_mcp"]["attempts"] == 2
+    assert "No root cause is asserted" in result["answer"]
+
+
+class SynthesisOnlyModel:
+    def __init__(self):
+        self.calls = 0
+
+    async def ainvoke(self, messages):
+        self.calls += 1
+        return AIMessage(content="Evidence-first diagnosis.")
+
+
+def test_evidence_first_success_uses_one_llm_round():
+    async def scenario():
+        model = SynthesisOnlyModel()
+        graph = build_evidence_first_agent(fake_tools(), model=model)
+        return await investigate(graph, "INC-1001", "Investigate"), model.calls
+    result, calls = asyncio.run(scenario())
+    assert result["status"] == "complete"
+    assert result["missing_evidence"] == []
+    assert result["llm_rounds"] == 1
+    assert calls == 1
+    assert result["answer"] == "Evidence-first diagnosis."
+
+
+def test_evidence_first_outage_skips_llm(monkeypatch):
+    monkeypatch.setattr("app.agents.single_agent.TOOL_ATTEMPTS", 2)
+    monkeypatch.setattr("app.agents.single_agent.TOOL_BACKOFF_SECONDS", 0)
+    async def scenario():
+        model = SynthesisOnlyModel()
+        graph = build_evidence_first_agent(fake_tools(fail_runbook=True), model=model)
+        return await investigate(graph, "INC-1001", "Investigate"), model.calls
+    result, calls = asyncio.run(scenario())
+    assert result["status"] == "incomplete"
+    assert result["missing_evidence"] == ["get_incident_runbook_mcp"]
+    assert result["llm_rounds"] == 0
+    assert calls == 0
     assert result["tool_metrics"]["get_incident_runbook_mcp"]["attempts"] == 2
     assert "No root cause is asserted" in result["answer"]
