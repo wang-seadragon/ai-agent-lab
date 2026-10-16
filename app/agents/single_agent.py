@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from app.llm.provider import get_chat_model
+from app.agents.evidence_assessment import extract_diagnosis
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ class InvestigationResult(TypedDict):
     tool_errors: list[dict]
     duration_ms: float
     answer: str
+    root_cause_confirmed: bool
+    suspected_root_cause: str | None
+    confidence: str | None
+    diagnostic_missing_evidence: list[str]
 
 
 def _payload(content):
@@ -349,4 +354,5 @@ async def investigate(agent, incident_id: str, question: str) -> InvestigationRe
         ],
         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
         "answer": str(result["messages"][-1].content),
+        **extract_diagnosis(str(result["messages"][-1].content), result["status"]),
     }
