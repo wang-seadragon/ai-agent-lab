@@ -219,7 +219,40 @@ def build_agent(tools, model=None):
         return "incomplete" if state["llm_rounds"] >= MAX_LLM_ROUNDS else "agent"
 
     def route_after_answer(state):
-        return "incomplete" if selected_tool_failures(state) else "complete"
+        if selected_tool_failures(state):
+            return "incomplete"
+        question = next((str(m.content) for m in state["messages"]
+                         if isinstance(m, HumanMessage)), "")
+        asks_for_confirmation = (
+            "root cause" in question.lower()
+            and any(term in question.lower() for term in ("confirm", "confirmed", "prove"))
+        )
+        used = {m.name for m in state["messages"] if isinstance(m, ToolMessage)}
+        # For a root-cause confirmation request, metrics alone are insufficient.
+        # Only enforce this gate when the standard incident sources are available;
+        # retain dynamic selection for other questions and custom tool sets.
+        required = {
+            "get_incident_metrics_mcp", "get_incident_logs_mcp",
+            "get_incident_runbook_mcp",
+        }
+        if (asks_for_confirmation and required.issubset(tools_by_name)
+                and used and required - used
+                and state.get("llm_rounds", 0) < MAX_LLM_ROUNDS):
+            return "collect_missing"
+        return "complete"
+
+    def collect_missing(state):
+        used = {m.name for m in state["messages"] if isinstance(m, ToolMessage)}
+        names = sorted({
+            "get_incident_metrics_mcp", "get_incident_logs_mcp",
+            "get_incident_runbook_mcp",
+        } - used)
+        logger.info("Evidence gate requesting uncollected sources: %s", names)
+        return {"messages": [AIMessage(content="", tool_calls=[
+            {"name": name, "args": {"incident_id": state["incident_id"]},
+             "id": f"evidence-gate-{state['llm_rounds']}-{i}", "type": "tool_call"}
+            for i, name in enumerate(names)
+        ])]}
 
     def complete(state):
         # A no-tool answer is allowed for general questions, but not an
@@ -303,6 +336,8 @@ def build_agent(tools, model=None):
     graph.add_node("complete", complete)
     graph.add_node("incomplete", incomplete)
     graph.add_node("partial", partial)
+    graph.add_node("collect_missing", collect_missing)
+    graph.add_edge("collect_missing", "tools")
     graph.add_edge(START, "agent")
     graph.add_conditional_edges(
         "agent", route_after_llm, {"tools": "tools", "validate": "validate"}
@@ -310,7 +345,8 @@ def build_agent(tools, model=None):
     graph.add_node("validate", lambda state: {})
     graph.add_conditional_edges(
         "validate", route_after_answer,
-        {"complete": "complete", "incomplete": "incomplete"},
+        {"complete": "complete", "incomplete": "incomplete",
+         "collect_missing": "collect_missing"},
     )
     graph.add_conditional_edges(
         "tools", route_after_tools,
