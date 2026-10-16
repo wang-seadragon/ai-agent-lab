@@ -15,9 +15,9 @@ _ALL_HEADINGS = tuple(label for labels in _HEADINGS.values() for label in labels
     "alternative explanations", "next steps", "recommended next steps",
 )
 _HEADING_RE = re.compile(
-    r"^\\s*(?:#{1,4}\\s*)?(?:\\*\\*)?(" +
+    r"^\s*(?:#{1,4}\s*)?(?:\*\*)?(" +
     "|".join(re.escape(s) for s in sorted(_ALL_HEADINGS, key=len, reverse=True)) +
-    r")(?:\\*\\*)?\\s*:\\s*(.*)$", re.IGNORECASE,
+    r")(?:\*\*)?\s*:\s*(.*)$", re.IGNORECASE,
 )
 
 
@@ -37,7 +37,7 @@ def _sections(answer: str) -> dict[str, list[str]]:
 
 
 def _clean(line: str) -> str:
-    return re.sub(r"^[-*•]\\s*|^\\d+[.)]\\s*", "", line).strip().strip("* ").strip()
+    return re.sub(r"^[-*•]\s*|^\d+[.)]\s*", "", line).strip().strip("* ").strip()
 
 
 def extract_diagnosis(answer: str, status: str) -> dict:
@@ -52,7 +52,7 @@ def extract_diagnosis(answer: str, status: str) -> dict:
         (level for heading in _HEADINGS["confidence"]
          for line in sections.get(heading, [])
          for level in ("high", "medium", "low")
-         if re.search(r"\\b" + level + r"\\b", line, re.IGNORECASE)),
+         if re.search(r"\b" + level + r"\b", line, re.IGNORECASE)),
         None,
     )
     gaps = []
