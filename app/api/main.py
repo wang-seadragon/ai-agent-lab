@@ -53,6 +53,10 @@ class InvestigationResponse(BaseModel):
     tool_errors: list[ToolError]
     duration_ms: float
     answer: str
+    root_cause_confirmed: bool
+    suspected_root_cause: str | None
+    confidence: str | None
+    diagnostic_missing_evidence: list[str]
 
 
 @app.get("/health")
