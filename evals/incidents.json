@@ -1,0 +1,200 @@
+[
+  {
+    "id": "INC-EVAL-DB",
+    "title": "Database connection pool exhaustion",
+    "question": "Investigate why checkout API requests are timing out. Identify the most likely cause and supporting evidence.",
+    "root_cause": "database connection pool exhaustion",
+    "expected_terms": [
+      "connection pool",
+      "exhaust"
+    ],
+    "required_tools": [
+      "get_incident_metrics_mcp",
+      "get_incident_logs_mcp"
+    ],
+    "evidence_terms": [
+      "pool",
+      "timeout"
+    ],
+    "tools": {
+      "metrics": {
+        "service": "checkout-api",
+        "p95_latency_ms": 5200,
+        "baseline_p95_latency_ms": 180,
+        "db_pool_active": 40,
+        "db_pool_capacity": 40,
+        "db_pool_waiting": 117,
+        "cpu_percent": 38
+      },
+      "logs": {
+        "entries": [
+          "ERROR checkout-api: timed out waiting for a database connection after 3000ms",
+          "WARN db-pool: active=40 max=40 waiting=117",
+          "INFO deployment: no deploys in past 24h"
+        ]
+      },
+      "runbook": {
+        "guidance": [
+          "Check database connection pool utilization and slow queries.",
+          "Do not restart or resize without operator approval."
+        ]
+      }
+    }
+  },
+  {
+    "id": "INC-EVAL-CPU",
+    "title": "CPU saturation from unexpected batch job",
+    "question": "Why did analytics API latency spike at 09:00? Investigate using available evidence.",
+    "root_cause": "CPU saturation from a concurrent batch job",
+    "expected_terms": [
+      "cpu",
+      "batch"
+    ],
+    "required_tools": [
+      "get_incident_metrics_mcp",
+      "get_incident_logs_mcp"
+    ],
+    "evidence_terms": [
+      "cpu",
+      "batch"
+    ],
+    "tools": {
+      "metrics": {
+        "service": "analytics-api",
+        "cpu_percent": 99,
+        "cpu_baseline_percent": 30,
+        "p95_latency_ms": 4100,
+        "baseline_p95_latency_ms": 220,
+        "memory_percent": 48
+      },
+      "logs": {
+        "entries": [
+          "INFO scheduler: ad-hoc batch aggregation started at 08:59",
+          "WARN analytics-api: CPU throttling detected at 09:01",
+          "INFO database: connection pool normal"
+        ]
+      },
+      "runbook": {
+        "guidance": [
+          "Correlate CPU pressure with concurrent jobs.",
+          "Pause jobs only with human authorization."
+        ]
+      }
+    }
+  },
+  {
+    "id": "INC-EVAL-MEM",
+    "title": "Memory exhaustion in stream worker",
+    "question": "Investigate repeated stream-worker restarts and increasing processing lag.",
+    "root_cause": "memory exhaustion causing out-of-memory worker restarts",
+    "expected_terms": [
+      "memory",
+      "out of memory"
+    ],
+    "required_tools": [
+      "get_incident_metrics_mcp",
+      "get_incident_logs_mcp"
+    ],
+    "evidence_terms": [
+      "memory",
+      "restart"
+    ],
+    "tools": {
+      "metrics": {
+        "service": "stream-worker",
+        "memory_percent": 99,
+        "baseline_memory_percent": 53,
+        "restarts_15m": 9,
+        "processing_lag_seconds": 480,
+        "baseline_lag_seconds": 8,
+        "cpu_percent": 45
+      },
+      "logs": {
+        "entries": [
+          "ERROR kernel: Out of memory: Killed process stream-worker",
+          "WARN orchestrator: stream-worker restarted after OOMKilled",
+          "WARN consumer: processing lag increasing"
+        ]
+      },
+      "runbook": {
+        "guidance": [
+          "Review heap growth and memory limits.",
+          "Memory limit changes require human approval."
+        ]
+      }
+    }
+  },
+  {
+    "id": "INC-EVAL-UPSTREAM",
+    "title": "Upstream dependency returns 503",
+    "question": "Why is the invoice generation pipeline failing? Identify the cause and observations.",
+    "root_cause": "upstream billing dependency returning HTTP 503",
+    "expected_terms": [
+      "upstream",
+      "503"
+    ],
+    "required_tools": [
+      "get_incident_metrics_mcp",
+      "get_incident_logs_mcp"
+    ],
+    "evidence_terms": [
+      "503",
+      "billing"
+    ],
+    "tools": {
+      "metrics": {
+        "service": "invoice-worker",
+        "failed_jobs_10m": 840,
+        "baseline_failed_jobs_10m": 0,
+        "cpu_percent": 22,
+        "upstream_billing_5xx_rate_percent": 92
+      },
+      "logs": {
+        "entries": [
+          "ERROR invoice-worker: billing-api responded HTTP 503 Service Unavailable",
+          "WARN retry: upstream billing-api request failed 5 consecutive times",
+          "INFO database: healthy"
+        ]
+      },
+      "runbook": {
+        "guidance": [
+          "Check billing-api health and upstream incident status.",
+          "Avoid destructive replays without approval."
+        ]
+      }
+    }
+  },
+  {
+    "id": "INC-EVAL-UNKNOWN",
+    "title": "Insufficient evidence",
+    "question": "Investigate an intermittent latency alert. Can you confirm the root cause?",
+    "root_cause": null,
+    "expected_terms": [],
+    "required_tools": [
+      "get_incident_metrics_mcp",
+      "get_incident_logs_mcp"
+    ],
+    "evidence_terms": [],
+    "tools": {
+      "metrics": {
+        "service": "gateway",
+        "p95_latency_ms": 380,
+        "baseline_p95_latency_ms": 300,
+        "cpu_percent": 41,
+        "memory_percent": 44
+      },
+      "logs": {
+        "entries": [
+          "INFO gateway: latency alert triggered briefly",
+          "INFO gateway: no error spikes in available 5-minute sample"
+        ]
+      },
+      "runbook": {
+        "guidance": [
+          "Collect distributed traces and longer time windows before concluding.",
+          "Do not assert root cause without corroborating evidence."
+        ]
+      }
+    }
+  }
+]

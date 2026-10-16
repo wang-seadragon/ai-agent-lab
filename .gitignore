@@ -6,3 +6,5 @@ __pycache__/
 .idea/
 .vscode/
 ai_agent_lab.egg-info/
+# Generated model evaluation reports
+evals/report*.json
