@@ -1,6 +1,7 @@
 """FastAPI application; discover MCP tools and compile graph at startup."""
 from contextlib import asynccontextmanager
 import logging
+import asyncio
 import os
 
 from fastapi import FastAPI, Request
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.single_agent import build_agent, investigate
 from app.mcp_client import create_mcp_client
+from app.investigations.live_diagnostics import make_diagnostic_orchestrator, approved_diagnostic_context
 from app.knowledge.graph import KnowledgeGraph
 from app.knowledge.neo4j_repository import Neo4jRepository
 from app.knowledge.mcp_inventory_client import verify_and_ingest_entity, InventoryLookupError
@@ -25,6 +27,8 @@ async def lifespan(app: FastAPI):
     app.state.agent = build_agent(tools)
     app.state.knowledge_graph = None
     app.state.graph_repository = None
+    app.state.diagnostic_orchestrator = None
+    app.state.diagnostic_checks = {}
     if os.getenv("ENABLE_INVENTORY_GRAPH", "false").lower() == "true":
         if not os.getenv("INVENTORY_MCP_URL"):
             raise RuntimeError("INVENTORY_MCP_URL required when inventory graph enabled")
@@ -41,6 +45,13 @@ async def lifespan(app: FastAPI):
             raise
         app.state.graph_repository = repo
         app.state.knowledge_graph = KnowledgeGraph(repo)
+        if os.getenv('ENABLE_APPROVED_DIAGNOSTICS') == 'true':
+            path = os.getenv('KNOWLEDGE_SQLITE_PATH')
+            if not path:
+                repo.close()
+                raise RuntimeError('KNOWLEDGE_SQLITE_PATH required')
+            app.state.diagnostic_orchestrator = make_diagnostic_orchestrator(
+                app.state.knowledge_graph, path)
     try:
         yield
     finally:
@@ -94,6 +105,7 @@ def health():
 @app.post("/investigate", response_model=InvestigationResponse)
 async def investigate_incident(payload: InvestigationRequest, request: Request):
     question = payload.question
+    entity = None
     graph = getattr(request.app.state, "knowledge_graph", None)
     if payload.entity_id and graph is not None:
         try:
@@ -120,4 +132,14 @@ async def investigate_incident(payload: InvestigationRequest, request: Request):
             "\\nInventory verification is disabled. Treat the supplied entity ID "
             "as unverified and do not infer topology from it."
         )
+    if entity is not None:
+        try:
+            question += await approved_diagnostic_context(
+                getattr(request.app.state, "diagnostic_orchestrator", None),
+                payload.incident_id, entity,
+                getattr(request.app.state, "diagnostic_checks", {}),
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("Approved diagnostics unavailable")
+            question += "\\nApproved diagnostics unavailable; no check result is asserted."
     return await investigate(request.app.state.agent, payload.incident_id, question)
