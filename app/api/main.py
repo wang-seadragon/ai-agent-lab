@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.agents.single_agent import build_agent, investigate
 from app.mcp_client import create_mcp_client
 from app.investigations.live_diagnostics import make_diagnostic_orchestrator, approved_diagnostic_context
+from app.diagnostics.mcp_metrics_check import fetch_lag_evidence, lag_check_from_evidence
 from app.knowledge.graph import KnowledgeGraph
 from app.knowledge.neo4j_repository import Neo4jRepository
 from app.knowledge.mcp_inventory_client import verify_and_ingest_entity, InventoryLookupError
@@ -134,10 +135,22 @@ async def investigate_incident(payload: InvestigationRequest, request: Request):
         )
     if entity is not None:
         try:
+            checks = dict(getattr(request.app.state, "diagnostic_checks", {}))
+            if (getattr(request.app.state, "diagnostic_orchestrator", None) is not None
+                    and os.getenv("ENABLE_MCP_LAG_CHECK") == "true"):
+                # Existing MCP metrics server currently uses SIMULATED data.
+                # Explicit opt-in must only be used for development until the
+                # metrics backend is replaced by an authoritative provider.
+                threshold = float(os.environ["MCP_LAG_THRESHOLD_MINUTES"])
+                url = os.environ["DIAGNOSTIC_METRICS_MCP_URL"]
+                outcome = await fetch_lag_evidence(
+                    payload.incident_id, entity.entity_id, threshold, url)
+                checks["mcp_ingestion_lag"] = lag_check_from_evidence(
+                    entity.entity_id, entity.entity_id, outcome)
             question += await approved_diagnostic_context(
                 getattr(request.app.state, "diagnostic_orchestrator", None),
                 payload.incident_id, entity,
-                getattr(request.app.state, "diagnostic_checks", {}),
+                checks,
             )
         except Exception:
             logging.getLogger(__name__).exception("Approved diagnostics unavailable")
