@@ -3,12 +3,15 @@ import os
 from mcp.server.fastmcp import FastMCP
 from app.tools import get_incident_metrics
 from app.telemetry.http_metrics import fetch_telemetry_metrics
+from app.telemetry.lab_prometheus import fetch_lab_metrics
 
 mcp = FastMCP("incident-metrics", host="127.0.0.1", port=int(os.getenv("METRICS_MCP_PORT", "8101")), stateless_http=True, json_response=True)
 
 @mcp.tool()
 def get_incident_metrics_mcp(incident_id: str) -> dict:
     """Retrieve ingestion lag and worker CPU metrics for an incident."""
+    if os.getenv("METRICS_BACKEND", "simulated") == "lab_prometheus":
+        return fetch_lab_metrics(incident_id)
     if os.getenv("METRICS_BACKEND", "simulated") == "http":
         return fetch_telemetry_metrics(incident_id)
     if os.getenv("METRICS_BACKEND", "simulated") == "simulated":
