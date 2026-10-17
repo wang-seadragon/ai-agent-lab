@@ -72,3 +72,15 @@ def test_graph_traversal(system):
     graph.add_entity(VerifiedEntity("b", "database"), verified=True)
     graph.add_relationship(Relationship("a", "b"))
     assert graph.get_dependencies("a") == [VerifiedEntity("b", "database")]
+
+
+def test_typed_and_reverse_relationships(system):
+    _, graph, _, _, _ = system
+    graph.add_entity(VerifiedEntity("spark", "pipeline"), verified=True)
+    graph.add_entity(VerifiedEntity("redis", "database"), verified=True)
+    graph.add_relationship(Relationship("spark", "redis", "WRITES_TO"))
+    assert graph.get_dependencies("spark", relationship_type="WRITES_TO") == [
+        VerifiedEntity("redis", "database")]
+    assert graph.get_dependents("redis", relationship_type="WRITES_TO") == [
+        VerifiedEntity("spark", "pipeline")]
+    assert graph.get_dependencies("spark", relationship_type="CALLS") == []
