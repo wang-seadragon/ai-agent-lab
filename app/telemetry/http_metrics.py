@@ -7,7 +7,7 @@ import json
 import math
 import os
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 from urllib.request import Request, urlopen
 
 
@@ -18,6 +18,9 @@ def fetch_telemetry_metrics(incident_id, *, url=None, token=None,
     token = token if token is not None else os.getenv("TELEMETRY_API_TOKEN", "")
     if not incident_id or not url or not token:
         return {"error": "telemetry_not_configured", "incident_id": incident_id}
+    if url.count("{incident_id}") != 1:
+        return {"error": "telemetry_url_template_required", "incident_id": incident_id}
+    url = url.replace("{incident_id}", quote(incident_id, safe=""))
     parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
         return {"error": "telemetry_requires_https", "incident_id": incident_id}
