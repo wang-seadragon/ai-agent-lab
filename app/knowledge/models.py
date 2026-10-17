@@ -1,4 +1,4 @@
-"""Knowledge graph and investigation value objects."""
+"""Database-independent graph and investigation value objects."""
 from dataclasses import dataclass
 
 
@@ -12,6 +12,7 @@ class VerifiedEntity:
 class Relationship:
     source_id: str
     target_id: str
+    relationship_type: str = "DEPENDS_ON"
 
 
 @dataclass(frozen=True)
