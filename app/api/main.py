@@ -138,7 +138,7 @@ async def investigate_incident(payload: InvestigationRequest, request: Request):
             checks = dict(getattr(request.app.state, "diagnostic_checks", {}))
             if (getattr(request.app.state, "diagnostic_orchestrator", None) is not None
                     and os.getenv("ENABLE_MCP_LAG_CHECK") == "true"
-                    and os.getenv("METRICS_BACKEND") == "http"):
+                    and os.getenv("METRICS_BACKEND") in ("http", "lab_prometheus")):
                 # Existing MCP metrics server currently uses SIMULATED data.
                 # Explicit opt-in must only be used for development until the
                 # metrics backend is replaced by an authoritative provider.
