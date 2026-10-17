@@ -1,37 +1,34 @@
-"""Verified entity topology; no incident investigation logic."""
+"""Verified infrastructure topology, independent of storage backend."""
+from app.knowledge.graph_repository import GraphRepository
 from app.knowledge.models import Relationship, VerifiedEntity
-from app.knowledge.repository import KnowledgeRepository
 
 
 class KnowledgeGraph:
-    def __init__(self, repository: KnowledgeRepository):
+    def __init__(self, repository: GraphRepository):
         self.repository = repository
 
     def add_entity(self, entity: VerifiedEntity, *, verified: bool = False):
-        # Future connector boundary must authenticate and enforce verification.
+        # Placeholder until authenticated MCP entity verification is integrated.
         if not verified:
             raise ValueError("Authoritative verification is required")
         if not entity.entity_id or not entity.kind:
             raise ValueError("Entity ID and kind are required")
-        with self.repository.connect() as db:
-            db.execute("INSERT INTO entities VALUES (?,?) ON CONFLICT(entity_id) "
-                       "DO UPDATE SET kind=excluded.kind", (entity.entity_id, entity.kind))
+        self.repository.upsert_entity(entity)
 
     def get_entity(self, entity_id: str) -> VerifiedEntity | None:
-        with self.repository.connect() as db:
-            row = db.execute("SELECT * FROM entities WHERE entity_id=?", (entity_id,)).fetchone()
-        return VerifiedEntity(row["entity_id"], row["kind"]) if row else None
+        return self.repository.get_entity(entity_id)
 
     def add_relationship(self, relationship: Relationship):
-        with self.repository.connect() as db:
-            db.execute("INSERT INTO dependencies VALUES (?,?)",
-                       (relationship.source_id, relationship.target_id))
+        if not self.get_entity(relationship.source_id) or not self.get_entity(relationship.target_id):
+            raise ValueError("Both relationship endpoints must be verified")
+        self.repository.add_relationship(relationship)
 
-    def get_dependencies(self, entity_id: str) -> list[VerifiedEntity]:
-        with self.repository.connect() as db:
-            rows = db.execute(
-                "SELECT e.entity_id,e.kind FROM dependencies d JOIN entities e "
-                "ON e.entity_id=d.target_id WHERE d.source_id=? ORDER BY e.entity_id",
-                (entity_id,),
-            ).fetchall()
-        return [VerifiedEntity(row["entity_id"], row["kind"]) for row in rows]
+    def get_dependencies(self, entity_id: str, *,
+                         relationship_type: str | None = None) -> list[VerifiedEntity]:
+        return self.repository.get_related(entity_id, direction="outgoing",
+                                           relationship_type=relationship_type)
+
+    def get_dependents(self, entity_id: str, *,
+                       relationship_type: str | None = None) -> list[VerifiedEntity]:
+        return self.repository.get_related(entity_id, direction="incoming",
+                                           relationship_type=relationship_type)
