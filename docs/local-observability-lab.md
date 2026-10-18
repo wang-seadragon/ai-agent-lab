@@ -74,3 +74,59 @@ pytest -q tests/test_lab_prometheus.py
 pytest -q
 docker compose -f lab/compose.yaml down
 ```
+
+
+## Engineer-approved diagnostic setup (local lab)
+
+This is a **manual approval step**, not automatic approval by the API.
+Review the check implementation in `app/diagnostics/mcp_metrics_check.py`
+and run from the repository root:
+
+```sh
+export KNOWLEDGE_SQLITE_PATH="$PWD/lab/knowledge.db"
+python -m lab.approve_playbook --db "$KNOWLEDGE_SQLITE_PATH" --reviewer "$USER"
+```
+
+The command proposes `lab-high-ingestion-lag`, requires typing
+`APPROVE`, and records the reviewer in SQLite. It does not approve
+other checks or automatically execute any check.
+
+Run inventory MCP in its own terminal:
+
+```sh
+export INVENTORY_FILE="$PWD/lab/inventory.json"
+python -m app.mcp_servers.inventory
+```
+
+The inventory is an explicitly configured **synthetic lab inventory**;
+it is not evidence of real infrastructure. The API also requires a
+running Neo4j server and its credentials, plus the existing logs and
+runbooks MCP servers, metrics MCP server, and LLM configuration.
+Configure those according to the existing project setup before
+starting FastAPI. The opt-in API variables are:
+
+```sh
+export ENABLE_INVENTORY_GRAPH=true
+export INVENTORY_MCP_URL=http://127.0.0.1:8104/mcp
+export ENABLE_APPROVED_DIAGNOSTICS=true
+export KNOWLEDGE_SQLITE_PATH="$PWD/lab/knowledge.db"
+export ENABLE_MCP_LAG_CHECK=true
+export METRICS_BACKEND=lab_prometheus
+export DIAGNOSTIC_METRICS_MCP_URL=http://127.0.0.1:8101/mcp
+export MCP_LAG_THRESHOLD_MINUTES=20
+```
+
+Once all services are running, request:
+
+```sh
+curl -s http://127.0.0.1:8000/investigate \
+  -H 'Content-Type: application/json' \
+  -d '{"incident_id":"LAB-INC-1","entity_id":"lab-orders","question":"Investigate the observed lag. Distinguish measurements from root-cause hypotheses."}'
+```
+
+A high reading can match the approved playbook, but it **cannot confirm
+root cause**. Missing or mismatched evidence must be inconclusive.
+
+```sh
+pytest -q tests/test_lab_approved_diagnostics.py
+```
