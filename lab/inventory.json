@@ -1,0 +1,6 @@
+{
+  "environment": "local_lab",
+  "entities": [
+    {"entity_id": "lab-orders", "kind": "pipeline"}
+  ]
+}
