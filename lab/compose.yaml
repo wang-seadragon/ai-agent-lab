@@ -7,8 +7,11 @@ services:
       - ./pipeline.py:/workspace/pipeline.py:ro
     environment:
       LAB_CONTROL_TOKEN: "${LAB_CONTROL_TOKEN:-local-lab-only}"
+    expose:
+      - "8090" # ◄── Explicitly opens port 8090 to other containers in the mesh
     ports:
       - "127.0.0.1:8090:8090"
+
   prometheus:
     image: prom/prometheus:v2.55.1
     command: ["--config.file=/etc/prometheus/prometheus.yml"]
