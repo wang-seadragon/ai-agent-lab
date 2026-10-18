@@ -1,0 +1,23 @@
+services:
+  pipeline:
+    image: python:3.12-slim
+    working_dir: /workspace
+    command: ["python", "-u", "pipeline.py"]
+    volumes:
+      - ./pipeline.py:/workspace/pipeline.py:ro
+    environment:
+      LAB_CONTROL_TOKEN: "${LAB_CONTROL_TOKEN:-local-lab-only}"
+    expose:
+      - "8090" # ◄── Explicitly opens port 8090 to other containers in the mesh
+    ports:
+      - "127.0.0.1:8090:8090"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - pipeline
